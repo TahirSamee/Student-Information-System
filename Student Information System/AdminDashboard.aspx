@@ -79,21 +79,21 @@
 
         <!-- Chart Section -->
         <div class="section p-3 mb-3 row">
-    <div class="col-md-6">
-        <h5 class="text-primary mb-3">Distribution of GPA across Students</h5>
-        <div style="height:300px;">
-            <canvas id="gpaDistributionChart"></canvas>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <h5 class="text-primary mb-3 text-center">Students per Course</h5>
-        <div class="d-flex justify-content-center">
-            <div style="width: 320px; height: 320px;">
-                <canvas id="studentsPerCourseChart"></canvas>
+            <div class="col-md-6">
+                <h5 class="text-primary mb-3">Distribution of GPA across Students</h5>
+                <div style="height: 300px;">
+                    <canvas id="gpaDistributionChart"></canvas>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h5 class="text-primary mb-3 text-center">Students per Course</h5>
+                <div class="d-flex justify-content-center">
+                    <div style="width: 320px; height: 320px;">
+                        <canvas id="studentsPerCourseChart"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-</div>
 <%--<div class="section p-3 mb-3 row">
     <div class="col-md-6">
         <h5 class="text-primary mb-3">Students per Course</h5>

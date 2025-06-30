@@ -68,32 +68,31 @@ Public Class StudentDashboard
             client.DefaultRequestHeaders.Add("apikey", SupabaseKey)
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {SupabaseKey}")
 
-            ' Query assignments joined with grades and course name
-            'Dim url = $"{SupabaseUrl}/rest/v1/assignment_grades?student_id=eq.{studentId}&select=grade,assignments(title,due_date,courses(course_name))"
-            Dim url = $"{SupabaseUrl}/rest/v1/assignment_grades?student_id=eq.{studentId}&select=grade,assignments(assignment_id,title,due_date,courses(course_name))"
+            ' Fetch from the new view
+            Dim url = $"{SupabaseUrl}/rest/v1/student_dashboard_assignments?student_id=eq.{studentId}"
 
             Dim res = Await client.GetAsync(url)
 
             If res.IsSuccessStatusCode Then
                 Dim json = Await res.Content.ReadAsStringAsync()
-                Dim data = JsonConvert.DeserializeObject(Of List(Of GradeCombined))(json)
+                Dim data = JsonConvert.DeserializeObject(Of List(Of StudentAssignmentCombined))(json)
 
+                ' Prepare data for display
                 Dim display = data.Select(Function(a)
                                               Dim g As String = "Not yet graded"
-                                              If a.grade.HasValue AndAlso a.grade.Value > 0D Then
+                                              If a.grade.HasValue Then
                                                   g = a.grade.Value.ToString("0.0")
                                                   totalGrades.Add(a.grade.Value)
                                               End If
 
                                               Return New With {
-        .assignment_id = a.assignments.assignment_id,
-        .title = a.assignments.title,
-        .due_date = a.assignments.due_date,
-        .course_name = a.assignments.courses.course_name,
-        .grade_display = g
-    }
+                                              .assignment_id = a.assignment_id,
+                                              .title = a.title,
+                                              .due_date = a.due_date,
+                                              .course_name = a.course_name,
+                                              .grade_display = g
+                                          }
                                           End Function).ToList()
-
 
                 gvAssignments.DataSource = display
                 gvAssignments.DataBind()
@@ -102,6 +101,15 @@ Public Class StudentDashboard
             End If
         End Using
     End Function
+
+    Public Class StudentAssignmentCombined
+        Public Property student_id As Integer
+        Public Property assignment_id As Integer
+        Public Property title As String
+        Public Property due_date As DateTime
+        Public Property course_name As String
+        Public Property grade As Decimal?
+    End Class
 
     Public Class GradeCombined
         Public Property grade As Decimal?

@@ -137,32 +137,56 @@ Public Class Courses
                 End Try
             End Function))
     End Sub
-
     Protected Sub gvCourses_RowDeleting(sender As Object, e As GridViewDeleteEventArgs)
         RegisterAsyncTask(New PageAsyncTask(
-            Async Function()
-                Try
-                    Dim id = gvCourses.DataKeys(e.RowIndex).Value.ToString()
+        Async Function()
+            Try
+                Dim id = gvCourses.DataKeys(e.RowIndex).Value.ToString()
 
-                    Using client As New HttpClient()
-                        client.DefaultRequestHeaders.Add("apikey", SupabaseKey)
-                        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {SupabaseKey}")
+                Using client As New HttpClient()
+                    client.DefaultRequestHeaders.Add("apikey", SupabaseKey)
+                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {SupabaseKey}")
 
-                        Dim response = Await client.DeleteAsync($"{SupabaseUrl}/rest/v1/courses?course_id=eq.{id}")
+                    ' Step 1: Get all assignments for the course
+                    Dim resAssignments = Await client.GetAsync($"{SupabaseUrl}/rest/v1/assignments?course_id=eq.{id}&select=assignment_id")
+                    If resAssignments.IsSuccessStatusCode Then
+                        Dim json = Await resAssignments.Content.ReadAsStringAsync()
+                        Dim assignments = JsonConvert.DeserializeObject(Of List(Of AssignmentIdOnly))(json)
 
-                        If response.IsSuccessStatusCode Then
-                            Await LoadCourses()
-                        Else
-                            lblMessage.Text = "Delete failed"
-                        End If
-                    End Using
-                Catch ex As Exception
-                    lblMessage.Text = "Failed to delete. Maybe this is linked elsewhere."
-                    lblMessage.Visible = True
-                End Try
+                        ' Step 2: Delete assignment grades for each assignment
+                        For Each assignment In assignments
+                            Await client.DeleteAsync($"{SupabaseUrl}/rest/v1/assignment_grades?assignment_id=eq.{assignment.assignment_id}")
+                        Next
+                    End If
 
-            End Function))
+                    ' Step 3: Delete assignments of the course
+                    Await client.DeleteAsync($"{SupabaseUrl}/rest/v1/assignments?course_id=eq.{id}")
+
+                    ' Step 4: Delete enrollments of the course
+                    Await client.DeleteAsync($"{SupabaseUrl}/rest/v1/enrollments?course_id=eq.{id}")
+
+                    ' Step 5: Delete the course
+                    Dim response = Await client.DeleteAsync($"{SupabaseUrl}/rest/v1/courses?course_id=eq.{id}")
+
+                    If response.IsSuccessStatusCode Then
+                        Await LoadCourses()
+                        lblMessage.Text = "Course and related data deleted."
+                    Else
+                        lblMessage.Text = "Course deletion failed."
+                    End If
+                End Using
+            Catch ex As Exception
+                lblMessage.Text = "Failed to delete. Maybe this is linked elsewhere."
+                lblMessage.Visible = True
+            End Try
+        End Function))
     End Sub
+
+    Private Class AssignmentIdOnly
+        Public Property assignment_id As Integer
+    End Class
+
+
 End Class
 
 Public Class Course

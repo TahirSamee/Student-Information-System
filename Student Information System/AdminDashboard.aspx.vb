@@ -27,7 +27,6 @@ Public Class AdminDashboard
             RegisterAsyncTask(New PageAsyncTask(AddressOf LoadChartStats))
         End If
     End Sub
-
     Private Async Function LoadChartStats() As Task
         Try
             Using client As New HttpClient()
@@ -59,26 +58,14 @@ Public Class AdminDashboard
                     Dim gradeJson = Await gradeResponse.Content.ReadAsStringAsync()
                     Dim gradeList = JsonConvert.DeserializeObject(Of List(Of AssignmentGrade))(gradeJson)
 
+
                     GradeStats = gradeList.
-                    Where(Function(g) g.grade.HasValue).
-                    GroupBy(Function(g) g.student_id).
-                    Select(Function(g) New With {
-                        Key .student_id = g.Key,
-                        .average_gpa = g.Average(Function(x) x.grade.Value)
-                    }).
-                    GroupBy(Function(s) Math.Floor(s.average_gpa * 2) / 2). ' Group by 0.5 GPA ranges
-                    Select(Function(g) New GradeCount With {
-                        .grade = g.Key.ToString("0.0"),
-                        .count = g.Count()
-                    }).
-                    OrderBy(Function(g) g.grade).ToList()
-                    'GradeStats = gradeList.
-                    '    Where(Function(g) g.grade.HasValue).
-                    '    GroupBy(Function(g) g.grade.Value).
-                    '    Select(Function(g) New GradeCount With {
-                    '        .grade = g.Key.ToString("0.0"),
-                    '        .count = g.Count()
-                    '    }).OrderByDescending(Function(g) g.count).ToList()
+                        Where(Function(g) g.grade.HasValue).
+                        GroupBy(Function(g) g.grade.Value).
+                        Select(Function(g) New GradeCount With {
+                            .grade = g.Key.ToString("0.0"),
+                            .count = g.Count()
+                        }).OrderByDescending(Function(g) g.count).ToList()
                 Else
                     GradeStats = New List(Of GradeCount)()
                 End If
@@ -89,6 +76,70 @@ Public Class AdminDashboard
             CourseStats = New List(Of CourseEnrollmentStat)()
         End Try
     End Function
+    '    Private Async Function LoadChartStats() As Task
+    '        Try
+    '            Using client As New HttpClient()
+    '                client.DefaultRequestHeaders.Add("apikey", Login.SupabaseKey)
+    '                client.DefaultRequestHeaders.Add("Authorization", $"Bearer {Login.SupabaseKey}")
+
+    '                ' Supabase join query using embedded syntax
+    '                Dim url = $"{Login.SupabaseUrl}/rest/v1/enrollments?select=course_id,courses(course_name)&limit=10000"
+    '                Dim response = Await client.GetAsync(url)
+
+    '                If response.IsSuccessStatusCode Then
+    '                    Dim json = Await response.Content.ReadAsStringAsync()
+    '                    Dim enrollments = JsonConvert.DeserializeObject(Of List(Of EnrollmentWithCourse))(json)
+
+    '                    ' Group by course and count students
+    '                    CourseStats = enrollments.GroupBy(Function(e) e.courses.course_name).
+    '                    Select(Function(g) New CourseEnrollmentStat With {
+    '                        .course_name = g.Key,
+    '                        .student_count = g.Count()
+    '                    }).ToList()
+    '                Else
+    '                    CourseStats = New List(Of CourseEnrollmentStat)()
+    '                End If
+
+    '                ' Grade distribution from assignment_grades table
+    '                Dim gradeResponse = Await client.GetAsync($"{Login.SupabaseUrl}/rest/v1/assignment_grades?select=(grade,student_id)&limit=10000")
+
+    '                If gradeResponse.IsSuccessStatusCode Then
+    '                    Dim gradeJson = Await gradeResponse.Content.ReadAsStringAsync()
+    '                    Dim gradeList = JsonConvert.DeserializeObject(Of List(Of AssignmentGrade))(gradeJson)
+
+    '                    ' Step 1: Get average GPA per student
+    '                    Dim studentAverages = gradeList.
+    '    Where(Function(g) g.grade.HasValue).
+    '    GroupBy(Function(g) g.student_id).
+    '    Select(Function(g) New With {
+    '        .student_id = g.Key,
+    '        .average_gpa = g.Average(Function(x) x.grade.Value)
+    '    }).ToList()
+
+    '                    ' Step 2: Group student averages by rounded GPA bucket (e.g., 2.0, 2.5, etc.)
+    '                    Dim groupedByBucket = studentAverages.
+    '    GroupBy(Function(s) Math.Floor(s.average_gpa * 2) / 2).
+    '    ToDictionary(Function(g) g.Key, Function(g) g.Count())
+
+    '                    ' Step 3: Prepare final bucket list from 1.0 to 6.0
+    '                    Dim buckets = Enumerable.Range(2, 9).Select(Function(x) x / 2.0).ToList() ' 1.0 to 6.0 in steps of 0.5
+
+    '                    ' Step 4: Map buckets to actual student counts (or 0 if not present)
+    '                    GradeStats = buckets.Select(Function(bucket) New GradeCount With {
+    '    .grade = bucket.ToString("0.0"),
+    '    .count = If(groupedByBucket.ContainsKey(bucket), groupedByBucket(bucket), 0)
+    '}).ToList()
+
+    '                Else
+    '                    GradeStats = New List(Of GradeCount)()
+    '                End If
+
+
+    '            End Using ' ✅ This was missing
+    '        Catch ex As Exception
+    '            CourseStats = New List(Of CourseEnrollmentStat)()
+    '        End Try
+    '    End Function
 
     Public Class AssignmentGrade
         Public Property grade As Decimal?
@@ -224,28 +275,63 @@ Public Class AdminDashboard
 
     Protected Sub gvStudents_RowDeleting(sender As Object, e As GridViewDeleteEventArgs)
         RegisterAsyncTask(New PageAsyncTask(
-            Async Function() As Task
-                Try
-                    Dim id = Convert.ToInt32(gvStudents.DataKeys(e.RowIndex).Value)
+        Async Function() As Task
+            Try
+                Dim id = Convert.ToInt32(gvStudents.DataKeys(e.RowIndex).Value)
 
-                    Using client As New HttpClient()
-                        client.DefaultRequestHeaders.Add("apikey", Login.SupabaseKey)
-                        client.DefaultRequestHeaders.Add("Authorization", $"Bearer { Login.SupabaseKey}")
+                Using client As New HttpClient()
+                    client.DefaultRequestHeaders.Add("apikey", Login.SupabaseKey)
+                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {Login.SupabaseKey}")
 
-                        Dim response = Await client.DeleteAsync($"{ Login.SupabaseUrl}/rest/v1/students?id=eq.{id}")
+                    ' 1. Delete from assignment_grades
+                    Dim deleteGrades = Await client.DeleteAsync($"{Login.SupabaseUrl}/rest/v1/assignment_grades?student_id=eq.{id}")
+                    If Not deleteGrades.IsSuccessStatusCode Then
+                        Dim err = Await deleteGrades.Content.ReadAsStringAsync()
+                        ShowError($"Failed to delete grades: {err}")
+                        Return
+                    End If
 
-                        If response.IsSuccessStatusCode Then
-                            Await LoadStudents()
-                        Else
-                            Dim errorContent = Await response.Content.ReadAsStringAsync()
-                            ShowError($"Delete failed: {errorContent}")
-                        End If
-                    End Using
-                Catch ex As Exception
-                    ShowError($"Error deleting student: {ex.Message}")
-                End Try
-            End Function))
+                    ' 2. Delete from enrollments
+                    Dim deleteEnrollments = Await client.DeleteAsync($"{Login.SupabaseUrl}/rest/v1/enrollments?student_id=eq.{id}")
+                    If Not deleteEnrollments.IsSuccessStatusCode Then
+                        Dim err = Await deleteEnrollments.Content.ReadAsStringAsync()
+                        ShowError($"Failed to delete enrollments: {err}")
+                        Return
+                    End If
+
+                    ' 3. Delete from bookmarks (user_id = student_id)
+                    Dim deleteBookmarks = Await client.DeleteAsync($"{Login.SupabaseUrl}/rest/v1/bookmarks?user_id=eq.{id}")
+                    If Not deleteBookmarks.IsSuccessStatusCode Then
+                        Dim err = Await deleteBookmarks.Content.ReadAsStringAsync()
+                        ShowError($"Failed to delete bookmarks: {err}")
+                        Return
+                    End If
+
+                    ' 4. Delete from marketplace (user_id = student_id)
+                    Dim deleteMarketplace = Await client.DeleteAsync($"{Login.SupabaseUrl}/rest/v1/marketplace?user_id=eq.{id}")
+                    If Not deleteMarketplace.IsSuccessStatusCode Then
+                        Dim err = Await deleteMarketplace.Content.ReadAsStringAsync()
+                        ShowError($"Failed to delete listings: {err}")
+                        Return
+                    End If
+
+                    ' 5. Delete from students
+                    Dim deleteStudent = Await client.DeleteAsync($"{Login.SupabaseUrl}/rest/v1/students?id=eq.{id}")
+                    If deleteStudent.IsSuccessStatusCode Then
+                        Await LoadStudents()
+                    Else
+                        Dim err = Await deleteStudent.Content.ReadAsStringAsync()
+                        ShowError($"Failed to delete student: {err}")
+                    End If
+                End Using
+
+            Catch ex As Exception
+                ShowError($"Error deleting student: {ex.Message}")
+            End Try
+        End Function))
     End Sub
+
+
     Protected Sub btnLogout_Click(sender As Object, e As EventArgs)
         Session.Clear()
         Response.Redirect("Login.aspx")

@@ -40,8 +40,12 @@ Public Class GradeAssignment
 
     Protected Async Sub ddlCourse_SelectedIndexChanged(sender As Object, e As EventArgs)
         Await LoadAssignments()
+        ddlAssignment.SelectedIndex = 0
+    End Sub
+    Protected Async Sub ddlAssignment_SelectedIndexChanged(sender As Object, e As EventArgs)
         Await LoadEnrolledStudents()
     End Sub
+
 
     Private Async Function LoadAssignments() As Task
         ddlAssignment.Items.Clear()
@@ -68,31 +72,52 @@ Public Class GradeAssignment
     End Function
 
     Private Async Function LoadEnrolledStudents() As Task
-        If String.IsNullOrEmpty(ddlCourse.SelectedValue) Then Return
+        If String.IsNullOrEmpty(ddlCourse.SelectedValue) OrElse String.IsNullOrEmpty(ddlAssignment.SelectedValue) Then Return
 
         Dim courseId = ddlCourse.SelectedValue
+        Dim assignmentId = ddlAssignment.SelectedValue
+
         Using client As New HttpClient()
             client.DefaultRequestHeaders.Add("apikey", SupabaseKey)
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {SupabaseKey}")
 
-            Dim url = $"{SupabaseUrl}/rest/v1/enrollments?course_id=eq.{courseId}&select=student_id,students(first_name,last_name)"
+            'Dim url = $"{SupabaseUrl}/rest/v1/enrollments_with_grades?course_id=eq.{courseId}&or=(assignment_id.eq.{assignmentId},assignment_id.is.null)"
+            Dim url = $"{SupabaseUrl}/rest/v1/enrollments_with_grades?and=(course_id.eq.{courseId},assignment_id.eq.{assignmentId})"
+
             Dim res = Await client.GetAsync(url)
+            Dim errorContent = Await res.Content.ReadAsStringAsync()
+            System.Diagnostics.Debug.WriteLine("Supabase ERROR: " & errorContent)
 
             If res.IsSuccessStatusCode Then
-                Dim json = Await res.Content.ReadAsStringAsync()
-                Dim data = JsonConvert.DeserializeObject(Of List(Of EnrollmentCombined))(json)
+                Dim data = JsonConvert.DeserializeObject(Of List(Of EnrollmentWithGradeView))(errorContent)
 
-                Dim gridData = data.Select(Function(s) New With {
-                    .student_id = s.student_id,
-                    .student_name = $"{s.students.first_name} {s.students.last_name}",
-                    .grade = ""
-                }).ToList()
+
+                Dim gridData = data.
+    GroupBy(Function(s) s.student_id).
+    Select(Function(g)
+               Dim latestGrade = g.
+                   Where(Function(x) x.grade.HasValue).
+                   OrderByDescending(Function(x) x.grade).FirstOrDefault()
+
+               Dim fallback = g.First() ' fallback in case all grades are null
+
+               Return New With {
+                   .student_id = g.Key,
+                   .student_name = $"{fallback.student_first_name} {fallback.student_last_name}",
+                   .grade = If(latestGrade IsNot Nothing, latestGrade.grade.Value.ToString("0.0"), "0.0")
+               }
+           End Function).ToList()
+
+
+
 
                 gvGrades.DataSource = gridData
                 gvGrades.DataBind()
             End If
+
         End Using
     End Function
+
 
     Protected Async Sub btnSaveGrades_Click(sender As Object, e As EventArgs)
         lblMessage.Text = ""
@@ -143,8 +168,10 @@ Public Class GradeAssignment
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {SupabaseKey}")
             client.DefaultRequestHeaders.Add("Prefer", "resolution=merge-duplicates")
 
+            ' ... inside your Using block
             Dim content = New StringContent(JsonConvert.SerializeObject(gradesToSave), Encoding.UTF8, "application/json")
-            Dim res = Await client.PostAsync($"{SupabaseUrl}/rest/v1/assignment_grades", content)
+            Dim res = Await client.PostAsync($"{SupabaseUrl}/rest/v1/assignment_grades?on_conflict=assignment_id,student_id", content)
+
 
             If res.IsSuccessStatusCode Then
                 lblMessage.CssClass = "text-success"
@@ -168,14 +195,18 @@ Public Class GradeAssignment
         Public Property assignment_id As Integer
         Public Property title As String
     End Class
-
-    Public Class EnrollmentCombined
-        Public Property student_id As Integer
-        Public Property students As Student
-    End Class
-
     Public Class Student
         Public Property first_name As String
         Public Property last_name As String
     End Class
+    Public Class EnrollmentWithGradeView
+        Public Property student_id As Integer
+        Public Property course_id As Integer
+        Public Property student_first_name As String
+        Public Property student_last_name As String
+        Public Property assignment_id As Integer? ' ← make nullable
+        Public Property grade As Decimal?
+    End Class
+
+
 End Class

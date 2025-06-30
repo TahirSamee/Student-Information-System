@@ -20,7 +20,8 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-semibold">Select Assignment</label>
-                    <asp:DropDownList ID="ddlAssignment" runat="server" CssClass="form-select form-select-sm" />
+                    <asp:DropDownList ID="ddlAssignment" runat="server" CssClass="form-select form-select-sm" AutoPostBack="True" OnSelectedIndexChanged="ddlAssignment_SelectedIndexChanged" />
+
                 </div>
             </div>
         </div>
